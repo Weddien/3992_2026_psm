@@ -1,35 +1,15 @@
-# Gradle
-.gradle/
-build/
-!gradle/wrapper/gradle-wrapper.jar
-
-# IDE
-.idea/
 *.iml
-*.ipr
-*.iws
-out/
-
-# Secrets & Config
-firebase-service-account.json
-*.env
-application-local.conf
-
-# OS
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
 .DS_Store
-Thumbs.db
-*.swp
-*.swo
-
-# Logs
-logs/
-*.log
-
-# Docker
-docker-compose.override.yml
-firebase-service-account.json
-
-# Java
-*.class
-*.jar
-*.war
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
