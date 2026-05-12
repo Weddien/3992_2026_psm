@@ -9,6 +9,8 @@ import kotlinx.serialization.json.Json
 import com.yopackage.plugins.*
 import com.yopackage.auth.*
 import com.yopackage.routes.*
+import io.ktor.server.response.respond
+import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 
 fun main() {
@@ -30,14 +32,15 @@ fun Application.module() {
         })
     }
 
-    // Инициализация базы данных
     DatabaseFactory.init()
-
-    // Настройка безопасности (Firebase Auth)
     installSecurity()
 
-    // Маршруты API
     routing {
+        get("/health") {
+            call.respond(mapOf("status" to "ok"))
+        }
+
+        authRoutes()
         syncRoutes()
     }
 }
