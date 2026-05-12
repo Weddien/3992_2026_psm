@@ -1,6 +1,9 @@
 package com.example.myapplication.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -10,7 +13,7 @@ import com.example.myapplication.ui.screens.biometric.BiometricPromptScreen
 import com.example.myapplication.ui.screens.vault.VaultScreen
 import com.example.myapplication.ui.screens.vault.AddPasswordScreen
 import com.example.myapplication.ui.screens.settings.SettingsScreen
-import com.example.myapplication.ui.screens.vault.PasswordEntry
+import com.google.firebase.auth.FirebaseAuth
 
 object Routes {
     const val LOGIN = "login"
@@ -23,16 +26,25 @@ object Routes {
 
 @Composable
 fun NavGraph(navController: NavHostController) {
+    val auth = FirebaseAuth.getInstance()
+    val isLoggedIn = remember { mutableStateOf(auth.currentUser != null) }
+
+    // Определяем стартовый экран
+    val startDestination = if (isLoggedIn.value) Routes.BIOMETRIC else Routes.LOGIN
+
     NavHost(
         navController = navController,
-        startDestination = Routes.LOGIN
+        startDestination = startDestination
     ) {
         composable(Routes.LOGIN) {
             LoginScreen(
-                onLoginClick = { _, _ ->
-                    navController.navigate(Routes.BIOMETRIC)
+                onLoginSuccess = {
+                    isLoggedIn.value = true
+                    navController.navigate(Routes.BIOMETRIC) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
                 },
-                onRegisterClick = {
+                onNavigateToRegister = {
                     navController.navigate(Routes.REGISTER)
                 }
             )
@@ -40,10 +52,12 @@ fun NavGraph(navController: NavHostController) {
 
         composable(Routes.REGISTER) {
             RegisterScreen(
-                onRegisterClick = { _, _, _ ->
-                    navController.navigate(Routes.LOGIN)
+                onRegisterSuccess = {
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.REGISTER) { inclusive = true }
+                    }
                 },
-                onLoginClick = {
+                onNavigateToLogin = {
                     navController.popBackStack()
                 }
             )
@@ -52,36 +66,42 @@ fun NavGraph(navController: NavHostController) {
         composable(Routes.BIOMETRIC) {
             BiometricPromptScreen(
                 onBiometricSuccess = {
-                    navController.navigate(Routes.VAULT)
+                    navController.navigate(Routes.VAULT) {
+                        popUpTo(Routes.BIOMETRIC) { inclusive = true }
+                    }
                 },
-                onUsePinCode = {
-                    navController.navigate(Routes.VAULT)
+                onLogout = {
+                    auth.signOut()
+                    isLoggedIn.value = false
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(0) { inclusive = true }
+                    }
                 }
             )
         }
 
         composable(Routes.VAULT) {
             VaultScreen(
-                passwords = listOf(
-                    PasswordEntry("1", "Google", "user@gmail.com", "google.com"),
-                    PasswordEntry("2", "GitHub", "dev", "github.com")
-                ),
-                onAddPasswordClick = {
+                onNavigateToAddPassword = {
                     navController.navigate(Routes.ADD_PASSWORD)
                 },
-                onPasswordClick = { _ -> },
-                onLockClick = {
-                    navController.navigate(Routes.BIOMETRIC)
+                onNavigateToSettings = {
+                    navController.navigate(Routes.SETTINGS)
+                },
+                onLock = {
+                    navController.navigate(Routes.BIOMETRIC) {
+                        popUpTo(Routes.BIOMETRIC) { inclusive = true }
+                    }
                 }
             )
         }
 
         composable(Routes.ADD_PASSWORD) {
             AddPasswordScreen(
-                onSaveClick = { _, _, _, _ ->
+                onPasswordSaved = {
                     navController.popBackStack()
                 },
-                onBackClick = {
+                onNavigateBack = {
                     navController.popBackStack()
                 }
             )
@@ -89,13 +109,18 @@ fun NavGraph(navController: NavHostController) {
 
         composable(Routes.SETTINGS) {
             SettingsScreen(
-                onLogoutClick = {
-                    navController.navigate(Routes.LOGIN)
+                onLogout = {
+                    auth.signOut()
+                    isLoggedIn.value = false
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(0) { inclusive = true }
+                    }
                 },
-                onEnableAutofillClick = {},
-                onChangePasswordClick = {},
-                onDeleteAccountClick = {
-                    navController.navigate(Routes.LOGIN)
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onEnableAutofill = {
+                    // Открыть настройки автозаполнения
                 }
             )
         }

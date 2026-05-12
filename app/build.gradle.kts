@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    alias(libs.plugins.kotlin.compose)
+    kotlin("plugin.serialization") version "1.9.22"
 }
 
 android {
@@ -19,6 +19,8 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("String", "SERVER_URL", "\"http://10.0.2.2:8080\"")
     }
 
     buildTypes {
@@ -36,8 +38,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // Для Compose
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.8"
+    }
+
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -47,15 +55,27 @@ android {
     }
 }
 
-// ✅ ВЫНЕСЕНО НА УРОВЕНЬ МОДУЛЯ (после android {})
 kotlin {
     jvmToolchain(17)
 }
 
 dependencies {
-    // Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2024.02.00")
     implementation(composeBom)
+
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
+    implementation("com.google.firebase:firebase-auth-ktx")
+
+    // Ktor Client
+    implementation("io.ktor:ktor-client-android:2.3.8")
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.8")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.8")
+    implementation("io.ktor:ktor-client-auth:2.3.8")
+    implementation("io.ktor:ktor-client-logging:2.3.8")
+
+    // Biometric
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
 
     // Core
     implementation("androidx.core:core-ktx:1.12.0")
@@ -72,9 +92,12 @@ dependencies {
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
-    // Lifecycle ViewModel Compose
+    // Lifecycle
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
+
+    // DataStore
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
 
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
@@ -87,3 +110,5 @@ dependencies {
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
+
+apply(plugin = "com.google.gms.google-services")

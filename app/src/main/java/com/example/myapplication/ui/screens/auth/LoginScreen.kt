@@ -1,4 +1,3 @@
-// ui/screens/auth/LoginScreen.kt
 package com.example.myapplication.ui.screens.auth
 
 import androidx.compose.foundation.layout.*
@@ -14,23 +13,27 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.components.AppButton
 import com.example.myapplication.ui.components.AppPasswordField
+import com.google.firebase.auth.FirebaseAuth
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
-    onLoginClick: (email: String, password: String) -> Unit = { _, _ -> },
-    onRegisterClick: () -> Unit = {},
-    isLoading: Boolean = false,
-    error: String? = null
+    onLoginSuccess: () -> Unit,
+    onNavigateToRegister: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val auth = FirebaseAuth.getInstance()
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Вход") }
-            )
+            TopAppBar(title = { Text("Вход") })
         }
     ) { padding ->
         Column(
@@ -81,7 +84,7 @@ fun LoginScreen(
             if (error != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = error,
+                    text = error!!,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -92,17 +95,37 @@ fun LoginScreen(
             // Кнопка входа
             AppButton(
                 text = "Войти",
-                onClick = { onLoginClick(email, password) },
+                onClick = {
+                    coroutineScope.launch {
+                        isLoading = true
+                        error = null
+                        try {
+                            // Вход через Firebase
+                            auth.signInWithEmailAndPassword(email, password).await()
+                            onLoginSuccess()
+                        } catch (e: Exception) {
+                            error = when {
+                                e.message?.contains("no user record") == true ->
+                                    "Пользователь не найден"
+                                e.message?.contains("wrong password") == true ->
+                                    "Неверный пароль"
+                                e.message?.contains("invalid email") == true ->
+                                    "Некорректный email"
+                                else -> "Ошибка входа: ${e.message}"
+                            }
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                },
                 isLoading = isLoading,
-                enabled = email.isNotBlank() && password.isNotBlank()
+                enabled = email.isNotBlank() && password.isNotBlank() && !isLoading
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Ссылка на регистрацию
-            TextButton(
-                onClick = onRegisterClick
-            ) {
+            TextButton(onClick = onNavigateToRegister) {
                 Text("Нет аккаунта? Зарегистрироваться")
             }
 

@@ -1,4 +1,3 @@
-// ui/screens/auth/RegisterScreen.kt
 package com.example.myapplication.ui.screens.auth
 
 import androidx.compose.foundation.layout.*
@@ -14,25 +13,34 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.components.AppButton
 import com.example.myapplication.ui.components.AppPasswordField
+import com.google.firebase.auth.FirebaseAuth
+import io.ktor.client.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegisterScreen(
-    onRegisterClick: (email: String, password: String, confirmPassword: String) -> Unit = { _, _, _ -> },
-    onLoginClick: () -> Unit = {},
-    isLoading: Boolean = false,
-    error: String? = null
+    onRegisterSuccess: () -> Unit,
+    onNavigateToLogin: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val auth = FirebaseAuth.getInstance()
+    val coroutineScope = rememberCoroutineScope()
+    val client = remember { HttpClient() }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Регистрация") }
-            )
+            TopAppBar(title = { Text("Регистрация") })
         }
     ) { padding ->
         Column(
@@ -88,11 +96,11 @@ fun RegisterScreen(
                 errorMessage = passwordError
             )
 
-            // Общая ошибка
+            // Ошибка
             if (error != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = error,
+                    text = error!!,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -106,20 +114,51 @@ fun RegisterScreen(
                 onClick = {
                     if (password != confirmPassword) {
                         passwordError = "Пароли не совпадают"
-                    } else {
-                        onRegisterClick(email, password, confirmPassword)
+                        return@AppButton
+                    }
+
+                    coroutineScope.launch {
+                        isLoading = true
+                        error = null
+                        try {
+                            // 1. Регистрация в Firebase
+                            val authResult = auth.createUserWithEmailAndPassword(email, password).await()
+                            val token = authResult.user?.getIdToken(false)?.await()?.token
+
+                            if (token != null) {
+                                // 2. Регистрация на сервере
+                                val response: HttpResponse = client.post("http://10.0.2.2:8080/api/auth/register") {
+                                    header("Authorization", "Bearer $token")
+                                    contentType(ContentType.Application.Json)
+                                }
+
+                                if (response.status == HttpStatusCode.OK) {
+                                    onRegisterSuccess()
+                                } else {
+                                    error = "Ошибка регистрации на сервере"
+                                }
+                            }
+                        } catch (e: Exception) {
+                            error = when {
+                                e.message?.contains("email already in use") == true ->
+                                    "Email уже используется"
+                                e.message?.contains("weak password") == true ->
+                                    "Пароль слишком слабый"
+                                else -> "Ошибка: ${e.message}"
+                            }
+                        } finally {
+                            isLoading = false
+                        }
                     }
                 },
                 isLoading = isLoading,
-                enabled = email.isNotBlank() && password.isNotBlank() && confirmPassword.isNotBlank()
+                enabled = email.isNotBlank() && password.isNotBlank() && confirmPassword.isNotBlank() && !isLoading
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Ссылка на вход
-            TextButton(
-                onClick = onLoginClick
-            ) {
+            TextButton(onClick = onNavigateToLogin) {
                 Text("Уже есть аккаунт? Войти")
             }
 

@@ -1,4 +1,3 @@
-// ui/screens/vault/AddPasswordScreen.kt
 package com.example.myapplication.ui.screens.vault
 
 import androidx.compose.foundation.layout.*
@@ -15,126 +14,173 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.components.AppButton
 import com.example.myapplication.ui.components.AppPasswordField
-import kotlinx.coroutines.delay
+import com.google.firebase.auth.FirebaseAuth
+import io.ktor.client.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.serialization.json.Json
+import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPasswordScreen(
-    onSaveClick: (title: String, url: String, username: String, password: String) -> Unit = { _, _, _, _ -> },
-    onBackClick: () -> Unit = {},
-    initialData: PasswordEntry? = null
+    onPasswordSaved: () -> Unit,
+    onNavigateBack: () -> Unit,
+    existingPasswords: List<PasswordEntry> = emptyList()
 ) {
-    var title by remember { mutableStateOf(initialData?.title ?: "") }
-    var url by remember { mutableStateOf(initialData?.url ?: "") }
-    var username by remember { mutableStateOf(initialData?.username ?: "") }
+    var title by remember { mutableStateOf("") }
+    var url by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var showSuccess by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
 
-    // Генерация пароля (заглушка)
+    val auth = FirebaseAuth.getInstance()
+    val client = remember { HttpClient() }
+    val coroutineScope = rememberCoroutineScope()
+    val json = Json { ignoreUnknownKeys = true }
+
     fun generatePassword(): String {
-        val chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()"
-        return (1..16).map { chars.random() }.joinToString("")
-    }
+        val upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        val lower = "abcdefghijklmnopqrstuvwxyz"
+        val digits = "0123456789"
+        val special = "!@#$%^&*()_+-="
+        val all = upper + lower + digits + special
 
-    LaunchedEffect(showSuccess) {
-        if (showSuccess) {
-            delay(2000)
-            showSuccess = false
-            onBackClick()
-        }
+        return buildString {
+            append(upper.random())
+            append(lower.random())
+            append(digits.random())
+            append(special.random())
+            repeat(12) { append(all.random()) }
+        }.toList().shuffled().joinToString("")
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (initialData != null) "Редактировать" else "Добавить пароль") },
+                title = { Text("Добавить пароль") },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
                     }
                 }
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                Spacer(modifier = Modifier.height(16.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // Название
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Название") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("Название") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
 
-                Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // URL
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    label = { Text("URL (сайт или приложение)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                    singleLine = true
-                )
+            OutlinedTextField(
+                value = url,
+                onValueChange = { url = it },
+                label = { Text("URL (сайт или приложение)") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                singleLine = true
+            )
 
-                Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // Логин
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Логин / Email") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    singleLine = true
-                )
+            OutlinedTextField(
+                value = username,
+                onValueChange = { username = it },
+                label = { Text("Логин / Email") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                singleLine = true
+            )
 
-                Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // Пароль с генератором
-                AppPasswordField(
-                    value = password,
-                    onValueChange = { password =    it },
-                    label = "Пароль"
-                )
+            AppPasswordField(
+                value = password,
+                onValueChange = { password = it },
+                label = "Пароль"
+            )
 
-                // Кнопка генерации
-                TextButton(
-                    onClick = { password = generatePassword() }
-                ) {
-                    Text("Сгенерировать надежный пароль")
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Кнопка сохранения
-                AppButton(
-                    text = "Сохранить",
-                    onClick = { onSaveClick(title, url, username, password) },
-                    enabled = title.isNotBlank() && password.isNotBlank()
-                )
-                Spacer(modifier = Modifier.height(32.dp))
+            TextButton(onClick = { password = generatePassword() }) {
+                Text("Сгенерировать надежный пароль")
             }
 
-            // Сообщение об успехе
-            if (showSuccess) {
-                Snackbar(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp)
-                ) {
-                    Text("Пароль сохранен!")
-                }
+            if (error != null) {
+                Text(
+                    text = error!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            AppButton(
+                text = "Сохранить",
+                onClick = {
+                    coroutineScope.launch {
+                        isLoading = true
+                        error = null
+                        try {
+                            val newEntry = PasswordEntry(
+                                id = UUID.randomUUID().toString(),
+                                title = title,
+                                username = username,
+                                url = url,
+                                password = password
+                            )
+
+                            val updatedList = existingPasswords + newEntry
+                            val encryptedData = json.encodeToString(
+                                kotlinx.serialization.builtins.ListSerializer(PasswordEntry.serializer()),
+                                updatedList
+                            )
+                            val token = auth.currentUser?.getIdToken(false)?.await()?.token
+                                ?: throw Exception("Не авторизован")
+
+                            val response: HttpResponse = client.post("http://10.0.2.2:8080/api/sync/push") {
+                                header("Authorization", "Bearer $token")
+                                contentType(ContentType.Application.Json)
+                                setBody("""{"encryptedData":${json.encodeToString(
+                                    VaultResponse.serializer(),
+                                    VaultResponse(encryptedData, null)
+                                )}}""")
+                            }
+
+                            if (response.status == HttpStatusCode.OK) {
+                                onPasswordSaved()
+                            } else {
+                                error = "Ошибка сохранения"
+                            }
+                        } catch (e: Exception) {
+                            error = e.message
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                },
+                isLoading = isLoading,
+                enabled = title.isNotBlank() && password.isNotBlank() && !isLoading
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

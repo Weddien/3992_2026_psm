@@ -1,6 +1,7 @@
-// ui/screens/settings/SettingsScreen.kt
 package com.example.myapplication.ui.screens.settings
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,23 +11,34 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-
+import com.google.firebase.auth.FirebaseAuth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onLogoutClick: () -> Unit = {},
-    onEnableAutofillClick: () -> Unit = {},
-    onChangePasswordClick: () -> Unit = {},
-    onDeleteAccountClick: () -> Unit = {}
+    onLogout: () -> Unit,
+    onNavigateBack: () -> Unit,
+    onEnableAutofill: () -> Unit
 ) {
     var showLogoutDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    val auth = FirebaseAuth.getInstance()
+    val userEmail = auth.currentUser?.email ?: "Неизвестно"
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Настройки") })
+            TopAppBar(
+                title = { Text("Настройки") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                    }
+                }
+            )
         }
     ) { padding ->
         Column(
@@ -35,6 +47,17 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
         ) {
+            // Информация о пользователе
+            ListItem(
+                headlineContent = { Text(userEmail) },
+                supportingContent = { Text("Аккаунт Firebase") },
+                leadingContent = {
+                    Icon(Icons.Default.Person, contentDescription = null)
+                }
+            )
+
+            Divider()
+
             // Секция безопасность
             Text(
                 text = "Безопасность",
@@ -47,15 +70,11 @@ fun SettingsScreen(
                 supportingContent = { Text("Включить автозаполнение паролей в приложениях") },
                 leadingContent = { Icon(Icons.Default.Settings, contentDescription = null) },
                 trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
-                modifier = Modifier.clickable { onEnableAutofillClick() }
-            )
-
-            ListItem(
-                headlineContent = { Text("Изменить мастер-пароль") },
-                supportingContent = { Text("Обновить пароль для входа в приложение") },
-                leadingContent = { Icon(Icons.Default.Lock, contentDescription = null) },
-                trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
-                modifier = Modifier.clickable { onChangePasswordClick() }
+                modifier = Modifier.clickable {
+                    // Открыть системные настройки автозаполнения
+                    val intent = Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE)
+                    context.startActivity(intent)
+                }
             )
 
             Divider(modifier = Modifier.padding(horizontal = 16.dp))
@@ -77,7 +96,9 @@ fun SettingsScreen(
             ListItem(
                 headlineContent = { Text("Удалить аккаунт") },
                 supportingContent = { Text("Все данные будут безвозвратно удалены") },
-                leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                leadingContent = {
+                    Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                },
                 modifier = Modifier.clickable { showDeleteDialog = true }
             )
 
@@ -101,7 +122,8 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     showLogoutDialog = false
-                    onLogoutClick()
+                    auth.signOut()
+                    onLogout()
                 }) {
                     Text("Выйти")
                 }
@@ -114,16 +136,17 @@ fun SettingsScreen(
         )
     }
 
-    // Диалог удаления
+    // Диалог удаления аккаунта
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Удаление аккаунта") },
-            text = { Text("Это действие нельзя отменить. Все ваши пароли будут удалены.") },
+            text = { Text("Это действие нельзя отменить. Все ваши пароли будут удалены из Firebase.") },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteDialog = false
-                    onDeleteAccountClick()
+                    auth.currentUser?.delete()
+                    onLogout()
                 }) {
                     Text("Удалить", color = MaterialTheme.colorScheme.error)
                 }
