@@ -8,7 +8,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -21,8 +20,16 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.builtins.ListSerializer
 import java.util.UUID
+
+@OptIn(kotlinx.serialization.InternalSerializationApi::class)
+@Serializable
+data class SyncPushRequest(
+    val encryptedData: String
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,11 +130,20 @@ fun AddPasswordScreen(
             }
 
             if (error != null) {
-                Text(
-                    text = error!!,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = error!!,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -139,6 +155,14 @@ fun AddPasswordScreen(
                         isLoading = true
                         error = null
                         try {
+                            // Валидация
+                            if (title.isBlank()) {
+                                throw Exception("Введите название")
+                            }
+                            if (password.isBlank()) {
+                                throw Exception("Введите пароль")
+                            }
+
                             val newEntry = PasswordEntry(
                                 id = UUID.randomUUID().toString(),
                                 title = title,
@@ -148,29 +172,38 @@ fun AddPasswordScreen(
                             )
 
                             val updatedList = existingPasswords + newEntry
+
                             val encryptedData = json.encodeToString(
-                                kotlinx.serialization.builtins.ListSerializer(PasswordEntry.serializer()),
+                                ListSerializer(PasswordEntry.serializer()),
                                 updatedList
                             )
+
                             val token = auth.currentUser?.getIdToken(false)?.await()?.token
                                 ?: throw Exception("Не авторизован")
+
+                            val requestBody = SyncPushRequest(encryptedData = encryptedData)
+                            val jsonBody = json.encodeToString(SyncPushRequest.serializer(), requestBody)
+
+                            println("Sending request: $jsonBody")
 
                             val response: HttpResponse = client.post("http://10.0.2.2:8080/api/sync/push") {
                                 header("Authorization", "Bearer $token")
                                 contentType(ContentType.Application.Json)
-                                setBody("""{"encryptedData":${json.encodeToString(
-                                    VaultResponse.serializer(),
-                                    VaultResponse(encryptedData, null)
-                                )}}""")
+                                setBody(jsonBody)
                             }
+
+                            println("Response status: ${response.status}")
+                            println("Response body: ${response.bodyAsText()}")
 
                             if (response.status == HttpStatusCode.OK) {
                                 onPasswordSaved()
                             } else {
-                                error = "Ошибка сохранения"
+                                error = "Ошибка сохранения: ${response.status}"
                             }
                         } catch (e: Exception) {
-                            error = e.message
+                            error = "Ошибка: ${e.message}"
+                            println("Error: ${e.message}")
+                            e.printStackTrace()
                         } finally {
                             isLoading = false
                         }

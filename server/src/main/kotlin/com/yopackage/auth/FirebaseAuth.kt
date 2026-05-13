@@ -21,7 +21,7 @@ fun Application.installSecurity() {
 
         FirebaseApp.initializeApp(options)
     } catch (e: Exception) {
-        println("Warning: Firebase not initialized - ${e.message}")
+        println("Ошибка: Firebase не инициализирован - ${e.message}")
     }
 
     install(Authentication) {
