@@ -30,7 +30,6 @@ fun BiometricPromptScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isBiometricAvailable by remember { mutableStateOf(false) }
 
-    // Проверка доступности биометрии
     LaunchedEffect(Unit) {
         val biometricManager = BiometricManager.from(context)
         isBiometricAvailable = when (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)) {
@@ -39,7 +38,6 @@ fun BiometricPromptScreen(
         }
     }
 
-    // Launcher для биометрии
     val biometricLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->

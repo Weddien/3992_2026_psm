@@ -72,7 +72,10 @@ fun VaultScreen(
                     val body = response.bodyAsText()
                     val vaultResponse = json.decodeFromString<VaultResponse>(body)
                     if (vaultResponse.encryptedData != null) {
-                        passwords = json.decodeFromString(vaultResponse.encryptedData)
+                        val jsonString = String(
+                            android.util.Base64.decode(vaultResponse.encryptedData, android.util.Base64.NO_WRAP)
+                        )
+                        passwords = json.decodeFromString(jsonString)
                     }
                 }
             }

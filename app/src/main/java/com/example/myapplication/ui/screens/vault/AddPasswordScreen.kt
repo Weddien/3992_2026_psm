@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import android.util.Base64
 import com.example.myapplication.ui.components.AppButton
 import com.example.myapplication.ui.components.AppPasswordField
 import com.google.firebase.auth.FirebaseAuth
@@ -20,23 +21,15 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.builtins.ListSerializer
 import java.util.UUID
-
-@OptIn(kotlinx.serialization.InternalSerializationApi::class)
-@Serializable
-data class SyncPushRequest(
-    val encryptedData: String
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPasswordScreen(
     onPasswordSaved: () -> Unit,
-    onNavigateBack: () -> Unit,
-    existingPasswords: List<PasswordEntry> = emptyList()
+    onNavigateBack: () -> Unit
 ) {
     var title by remember { mutableStateOf("") }
     var url by remember { mutableStateOf("") }
@@ -45,10 +38,44 @@ fun AddPasswordScreen(
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    // Храним существующие пароли
+    var existingPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
+    var isLoaded by remember { mutableStateOf(false) }
+
     val auth = FirebaseAuth.getInstance()
     val client = remember { HttpClient() }
     val coroutineScope = rememberCoroutineScope()
     val json = Json { ignoreUnknownKeys = true }
+
+    // Загружаем существующие пароли ОДИН раз при открытии
+    LaunchedEffect(Unit) {
+        try {
+            val token = auth.currentUser?.getIdToken(false)?.await()?.token
+            if (token != null) {
+                val response: HttpResponse = client.post("http://10.0.2.2:8080/api/sync/pull") {
+                    header("Authorization", "Bearer $token")
+                }
+                if (response.status == HttpStatusCode.OK) {
+                    val body = response.bodyAsText()
+                    val vaultResponse = json.decodeFromString<VaultResponse>(body)
+                    if (vaultResponse.encryptedData != null) {
+                        try {
+                            val jsonString = String(
+                                Base64.decode(vaultResponse.encryptedData, Base64.NO_WRAP)
+                            )
+                            existingPasswords = json.decodeFromString(jsonString)
+                        } catch (e: Exception) {
+                            // Если не Base64 — пробуем напрямую
+                            existingPasswords = json.decodeFromString(vaultResponse.encryptedData)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // тихо
+        }
+        isLoaded = true
+    }
 
     fun generatePassword(): String {
         val upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -56,7 +83,6 @@ fun AddPasswordScreen(
         val digits = "0123456789"
         val special = "!@#$%^&*()_+-="
         val all = upper + lower + digits + special
-
         return buildString {
             append(upper.random())
             append(lower.random())
@@ -131,19 +157,11 @@ fun AddPasswordScreen(
 
             if (error != null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = error!!,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(8.dp)
-                    )
-                }
+                Text(
+                    text = error!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -155,14 +173,6 @@ fun AddPasswordScreen(
                         isLoading = true
                         error = null
                         try {
-                            // Валидация
-                            if (title.isBlank()) {
-                                throw Exception("Введите название")
-                            }
-                            if (password.isBlank()) {
-                                throw Exception("Введите пароль")
-                            }
-
                             val newEntry = PasswordEntry(
                                 id = UUID.randomUUID().toString(),
                                 title = title,
@@ -173,37 +183,32 @@ fun AddPasswordScreen(
 
                             val updatedList = existingPasswords + newEntry
 
-                            val encryptedData = json.encodeToString(
+                            val jsonString = json.encodeToString(
                                 ListSerializer(PasswordEntry.serializer()),
                                 updatedList
+                            )
+                            val encryptedData = Base64.encodeToString(
+                                jsonString.toByteArray(),
+                                Base64.NO_WRAP
                             )
 
                             val token = auth.currentUser?.getIdToken(false)?.await()?.token
                                 ?: throw Exception("Не авторизован")
 
-                            val requestBody = SyncPushRequest(encryptedData = encryptedData)
-                            val jsonBody = json.encodeToString(SyncPushRequest.serializer(), requestBody)
-
-                            println("Sending request: $jsonBody")
-
                             val response: HttpResponse = client.post("http://10.0.2.2:8080/api/sync/push") {
                                 header("Authorization", "Bearer $token")
                                 contentType(ContentType.Application.Json)
-                                setBody(jsonBody)
+                                setBody("""{"encryptedData":"$encryptedData"}""")
                             }
 
-                            println("Response status: ${response.status}")
-                            println("Response body: ${response.bodyAsText()}")
-
                             if (response.status == HttpStatusCode.OK) {
+                                existingPasswords = updatedList
                                 onPasswordSaved()
                             } else {
                                 error = "Ошибка сохранения: ${response.status}"
                             }
                         } catch (e: Exception) {
                             error = "Ошибка: ${e.message}"
-                            println("Error: ${e.message}")
-                            e.printStackTrace()
                         } finally {
                             isLoading = false
                         }
